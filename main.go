@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	data, err := ioutil.ReadFile("roms/zero")
+	data, err := ioutil.ReadFile("roms/MAZE")
 	if err != nil {
 		log.Fatal(err)
 	}

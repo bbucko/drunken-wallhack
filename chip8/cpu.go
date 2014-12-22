@@ -3,6 +3,8 @@ package chip8
 import (
 	"fmt"
 	"log"
+	"math/rand"
+	"time"
 )
 
 type memory []byte
@@ -59,6 +61,8 @@ func New(rom memory) *CPU {
 	}
 	copy(c.mem[c.PC:], rom)
 	copy(c.mem[0x50:], FONT)
+	rand.Seed(time.Now().UnixNano())
+
 	return c
 }
 
@@ -70,13 +74,13 @@ func (c *CPU) Step() error {
 		if opCode == 0x00E0 {
 			c.PC = c.PC + 2
 
-			log.Println("CLS")
+			log.Println("%x CLS", c.PC)
 		} else if opCode == 0x00EE {
 			c.returnFromSubroutine()
 		} else {
 			c.PC = c.PC + 2
 
-			log.Printf("SYS %x", opCode&0xFF0F)
+			log.Printf("%x SYS %x", c.PC, opCode&0xFF0F)
 		}
 	} else if instruction == 0x1 {
 		//Jump to address nnn
@@ -92,7 +96,16 @@ func (c *CPU) Step() error {
 			c.PC = c.PC + 2
 		}
 		c.PC = c.PC + 2
-		log.Printf("SNE V%d, %.2x", registry, value)
+		log.Printf("%x SNE V%d, %.2x", c.PC, registry, value)
+	} else if instruction == 0x3 {
+		//SE Vx, byte
+		registry := int(opCode & 0x0F00 >> 8)
+		value := byte(opCode & 0x00FF)
+		if c.V[registry] == value {
+			c.PC = c.PC + 2
+		}
+		c.PC = c.PC + 2
+		log.Printf("%x SE V%d, %.2x", c.PC, registry, value)
 	} else if instruction == 0x6 {
 		//LD Vx, byte
 		c.loadToRegister(opCode)
@@ -102,37 +115,44 @@ func (c *CPU) Step() error {
 		value := byte(opCode & 0x00FF)
 		c.V[x] = c.V[x] + value
 		c.PC = c.PC + 2
-		log.Printf("ADD V%d, %.2x", x, value)
+		log.Printf("%x ADD V%d, %.2x", c.PC, x, value)
 	} else if instruction == 0x8 {
 		x := opCode & 0x0F00 >> 8
 		y := opCode & 0x00F0 >> 4
-		log.Printf("LD V%d, V%d", x, y)
+		log.Printf("%x LD V%d, V%d", c.PC, x, y)
 		c.PC = c.PC + 2
 	} else if instruction == 0xA {
 		//LD I, addr
 		c.loadToI(opCode)
+	} else if instruction == 0xC {
+		//Sets VX to a random number and NN.
+		x := uint8(opCode & 0x0F00)
+		random := uint8(rand.Intn(255))
+		c.V[x] = random & uint8(opCode&0x00FF)
+		log.Printf("%x RND V%d, %d", c.PC, x, c.V[x])
+		c.PC = c.PC + 2
 	} else if instruction == 0xD {
 		//DRW Vx, Vy, nibble
 		x := opCode & 0x0F00 >> 8
 		y := opCode & 0x00F0 >> 4
 		n := opCode & 0x000F
 		c.PC = c.PC + 2
-		log.Printf("DRW V%d, V%d, %d", x, y, n)
+		log.Printf("%x DRW V%d, V%d, %d", c.PC, x, y, n)
 	} else if instruction == 0xF {
 		registry := uint8(opCode & 0x0F00 >> 8)
 		operation := opCode & 0xF0FF
 		if operation == 0xF007 {
-			log.Printf("Set V[%d] = delay timer value", registry)
+			log.Printf("%x Set V[%d] = delay timer value", c.PC, registry)
 			c.V[registry] = c.delay_timer
 		} else if operation == 0xF015 {
-			log.Printf("Set delay timer value = V[%d]", registry)
+			log.Printf("%x Set delay timer value = V[%d]", c.PC, registry)
 			c.delay_timer = c.V[registry]
 		} else {
-			log.Printf("F %x %x", opCode, operation)
+			log.Printf("%x F %x %x", c.PC, opCode, operation)
 		}
 		c.PC = c.PC + 2
 	} else {
-		log.Fatalf("Unknown %x %x", opCode, opCode>>12)
+		log.Fatalf("%x Unknown %x %x", c.PC, opCode, opCode>>12)
 	}
 
 	if c.sound_timer > 0 {
@@ -145,7 +165,6 @@ func (c *CPU) Step() error {
 	if c.delay_timer > 0 {
 		c.delay_timer--
 	}
-	log.Printf("%x", c.PC)
 	return nil
 }
 
@@ -161,7 +180,7 @@ func (c *CPU) callSubroutine(opCode instruction) {
 	c.sp++
 	c.PC = addr
 
-	log.Printf("Call subroutine at %.3x %x", addr, c.PC)
+	log.Printf("%x Call subroutine at %.3x %x", c.PC, addr, c.PC)
 }
 
 func (c *CPU) loadToRegister(opCode instruction) {
@@ -171,7 +190,7 @@ func (c *CPU) loadToRegister(opCode instruction) {
 	c.V[registerId] = byte
 	c.PC = c.PC + 2
 
-	log.Printf("LD V%d, %.2x", registerId, byte)
+	log.Printf("%x LD V%d, %.2x", c.PC, registerId, byte)
 }
 
 func (c *CPU) loadToI(opCode instruction) {
@@ -179,17 +198,17 @@ func (c *CPU) loadToI(opCode instruction) {
 	c.I = addr
 	c.PC = c.PC + 2
 
-	log.Printf("LD I, %.3x", addr)
+	log.Printf("%x LD I, %.3x", c.PC, addr)
 }
 
 func (c *CPU) jumpToAddress(opCode instruction) {
 	c.PC = address(opCode & 0x0FFF)
-	log.Printf("JP %.3x", c.PC)
+	log.Printf("%x JP %.3x", c.PC, c.PC)
 }
 
 func (c *CPU) returnFromSubroutine() {
 	c.sp--
 	c.PC = c.stack[c.sp]
 
-	log.Printf("RET %.3x %d", c.PC, c.sp)
+	log.Printf("%x RET %.3x %d", c.PC, c.PC, c.sp)
 }
