@@ -88,15 +88,6 @@ func (c *CPU) Step() error {
 	} else if instruction == 0x2 {
 		//Execute subroutine starting at address NNN
 		c.callSubroutine(opCode)
-	} else if instruction == 0x4 {
-		//SNE Vx, byte
-		registry := int(opCode & 0x0F00 >> 8)
-		value := byte(opCode & 0x00FF)
-		if c.V[registry] != value {
-			c.PC = c.PC + 2
-		}
-		c.PC = c.PC + 2
-		log.Printf("%x SNE V%d, %.2x", c.PC, registry, value)
 	} else if instruction == 0x3 {
 		//SE Vx, byte
 		registry := int(opCode & 0x0F00 >> 8)
@@ -106,26 +97,58 @@ func (c *CPU) Step() error {
 		}
 		c.PC = c.PC + 2
 		log.Printf("%x SE V%d, %.2x", c.PC, registry, value)
+	} else if instruction == 0x4 {
+		//SNE Vx, byte
+		registry := int(opCode & 0x0F00 >> 8)
+		value := byte(opCode & 0x00FF)
+		if c.V[registry] != value {
+			c.PC = c.PC + 2
+		}
+		c.PC = c.PC + 2
+		log.Printf("%x SNE V%d, %.2x", c.PC, registry, value)
 	} else if instruction == 0x6 {
 		//LD Vx, byte
 		c.loadToRegister(opCode)
 	} else if instruction == 0x7 {
 		//ADD Vx, byte
+		//TODO Refactor
 		x := uint8(opCode & 0x0F00 >> 8)
 		value := byte(opCode & 0x00FF)
 		c.V[x] = c.V[x] + value
 		c.PC = c.PC + 2
 		log.Printf("%x ADD V%d, %.2x", c.PC, x, value)
 	} else if instruction == 0x8 {
-		x := opCode & 0x0F00 >> 8
-		y := opCode & 0x00F0 >> 4
-		log.Printf("%x LD V%d, V%d", c.PC, x, y)
+		//TODO Refactor
+		if opCode&0xF00F == 0x8000 {
+			x := opCode & 0x0F00 >> 8
+			y := opCode & 0x00F0 >> 4
+			log.Printf("%x LD V%d, V%d", c.PC, x, y)
+		} else if opCode&0xF00F == 0x8001 {
+			//TODO
+		} else if opCode&0xF00F == 0x8002 {
+			//TODO
+		} else if opCode&0xF00F == 0x8003 {
+			//TODO
+		} else if opCode&0xF00F == 0x8004 {
+			c.addRegisters(opCode)
+		} else if opCode&0xF00F == 0x8005 {
+			//TODO
+		} else if opCode&0xF00F == 0x8006 {
+			//TODO
+		} else if opCode&0xF00F == 0x8007 {
+			//TODO
+		} else if opCode&0xF00F == 0x800E {
+			//TODO
+		} else {
+			log.Fatalf("Unknown 0x800 instruction %x", opCode)
+		}
 		c.PC = c.PC + 2
 	} else if instruction == 0xA {
 		//LD I, addr
 		c.loadToI(opCode)
 	} else if instruction == 0xC {
-		//Sets VX to a random number and NN.
+		//Sets VX to a random number and NN
+		//TODO Refactor
 		x := uint8(opCode & 0x0F00)
 		random := uint8(rand.Intn(255))
 		c.V[x] = random & uint8(opCode&0x00FF)
@@ -133,12 +156,14 @@ func (c *CPU) Step() error {
 		c.PC = c.PC + 2
 	} else if instruction == 0xD {
 		//DRW Vx, Vy, nibble
+		//TODO Refactor
 		x := opCode & 0x0F00 >> 8
 		y := opCode & 0x00F0 >> 4
 		n := opCode & 0x000F
 		c.PC = c.PC + 2
 		log.Printf("%x DRW V%d, V%d, %d", c.PC, x, y, n)
 	} else if instruction == 0xF {
+		//TODO Refactor
 		registry := uint8(opCode & 0x0F00 >> 8)
 		operation := opCode & 0xF0FF
 		if operation == 0xF007 {
@@ -211,4 +236,16 @@ func (c *CPU) returnFromSubroutine() {
 	c.PC = c.stack[c.sp]
 
 	log.Printf("%x RET %.3x %d", c.PC, c.PC, c.sp)
+}
+
+func (c *CPU) addRegisters(opCode instruction) {
+	//ADD Vx, Vy
+	x := uint8(opCode & 0x0F00 >> 8)
+	y := uint8(opCode & 0x00F0 >> 4)
+	z := uint16(c.V[x]) + uint16(c.V[y])
+	if z > 255 {
+		c.V[0xf] = 1
+	}
+	c.V[x] = byte(z & 0x0f)
+	log.Printf("%x ADD V%d, V%d", c.PC, x, y)
 }

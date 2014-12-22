@@ -56,6 +56,28 @@ func TestReturnFromSubroutine(t *testing.T) {
 	assert.Equal(0x204, c.stack[0])
 }
 
+func TestAddRegistersWithCarry(t *testing.T) {
+	assert := assert.New(t)
+	c := New(memory([]byte{}))
+	c.V[0] = 255
+	c.V[1] = 255
+	c.addRegisters(0x8014)
+	assert.Equal(uint8((255+255)&0x0f), c.V[0])
+	assert.Equal(255, c.V[1])
+	assert.Equal(1, c.V[0xf])
+}
+
+func TestAddRegistersWithoutCarry(t *testing.T) {
+	assert := assert.New(t)
+	c := New(memory([]byte{}))
+	c.V[0] = 1
+	c.V[1] = 1
+	c.addRegisters(0x8014)
+	assert.Equal(2, c.V[0])
+	assert.Equal(1, c.V[1])
+	assert.Equal(0, c.V[0xf])
+}
+
 func prepareMemory(mem memory) (c *CPU) {
 	c = New(mem)
 	return
