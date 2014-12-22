@@ -4,6 +4,8 @@ import (
 	"io/ioutil"
 	"log"
 
+	"time"
+
 	"github.com/bbucko/drunken-wallhack/chip8"
 )
 
@@ -13,11 +15,14 @@ func main() {
 		log.Fatal(err)
 	}
 
-	c := chip8.New()
-	c.Load(data)
+	c := chip8.New(data)
 
-	for i := 0; i < 10; i++ {
-		c.Step()
+	for {
+		err := c.Step()
+		time.Sleep(100 * time.Millisecond)
+		if err != nil {
+			log.Fatal("", err)
+		}
 	}
 
 }

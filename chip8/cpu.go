@@ -1,55 +1,195 @@
 package chip8
 
-import "log"
+import (
+	"fmt"
+	"log"
+)
 
 type memory []byte
+type instruction uint16
+type address uint16
 
 type CPU struct {
-	PC          uint16 `PC`
-	I           uint16 `I`
-	V           memory `V`
-	draw        bool   `Draw`
-	sound_timer byte   `sound_timer`
-	delay_timer byte   `delay_timer`
-	sp          byte   `sp`
+	PC          address `PC`
+	I           address `I`
+	V           memory  `V`
+	draw        bool    `Draw`
+	sound_timer byte    `sound_timer`
+	delay_timer byte    `delay_timer`
+	sp          byte    `sp`
+	stack       []address
 	key         memory
-	stack       memory
 	mem         memory
 	gfx         memory
 }
 
-func New() *CPU {
+var BEGIN_LOAD = address(0x200)
+
+var FONT memory = memory([]byte{
+	0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+	0x20, 0x60, 0x20, 0x20, 0x70, // 1
+	0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+	0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+	0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+	0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+	0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+	0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+	0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+	0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+	0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+	0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+	0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+	0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+	0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+	0xF0, 0x80, 0xF0, 0x80, 0x80, // F
+})
+
+func New(rom memory) *CPU {
 	c := &CPU{
-		PC:          0,
+		PC:          BEGIN_LOAD,
 		I:           0,
 		draw:        false,
 		sound_timer: 0,
 		delay_timer: 0,
+		stack:       make([]address, 16),
 		V:           make(memory, 16),
 		mem:         make(memory, 4096),
 		gfx:         make(memory, 64*32),
-		stack:       make(memory, 16),
 		key:         make(memory, 16),
 	}
-
+	copy(c.mem[c.PC:], rom)
+	copy(c.mem[0x50:], FONT)
 	return c
 }
 
-func (c *CPU) Load(rom memory) error {
-	copy(c.mem, rom)
-	return nil
-}
-
 func (c *CPU) Step() error {
-	memAddress := c.PC * 2
-	opCode := opCode(memAddress, c.mem)
-	log.Printf("%x", opCode)
-	c.PC += 1
+	opCode := decodeOpCode(c.PC, c.mem)
+
+	instruction := (opCode & 0xF000) >> 12
+	if instruction == 0x0 {
+		if opCode == 0x00E0 {
+			c.PC = c.PC + 2
+
+			log.Println("CLS")
+		} else if opCode == 0x00EE {
+			c.returnFromSubroutine()
+		} else {
+			c.PC = c.PC + 2
+
+			log.Printf("SYS %x", opCode&0xFF0F)
+		}
+	} else if instruction == 0x1 {
+		//Jump to address nnn
+		c.jumpToAddress(opCode)
+	} else if instruction == 0x2 {
+		//Execute subroutine starting at address NNN
+		c.callSubroutine(opCode)
+	} else if instruction == 0x4 {
+		//SNE Vx, byte
+		registry := int(opCode & 0x0F00 >> 8)
+		value := byte(opCode & 0x00FF)
+		if c.V[registry] != value {
+			c.PC = c.PC + 2
+		}
+		c.PC = c.PC + 2
+		log.Printf("SNE V%d, %.2x", registry, value)
+	} else if instruction == 0x6 {
+		//LD Vx, byte
+		c.loadToRegister(opCode)
+	} else if instruction == 0x7 {
+		//ADD Vx, byte
+		x := uint8(opCode & 0x0F00 >> 8)
+		value := byte(opCode & 0x00FF)
+		c.V[x] = c.V[x] + value
+		c.PC = c.PC + 2
+		log.Printf("ADD V%d, %.2x", x, value)
+	} else if instruction == 0x8 {
+		x := opCode & 0x0F00 >> 8
+		y := opCode & 0x00F0 >> 4
+		log.Printf("LD V%d, V%d", x, y)
+		c.PC = c.PC + 2
+	} else if instruction == 0xA {
+		//LD I, addr
+		c.loadToI(opCode)
+	} else if instruction == 0xD {
+		//DRW Vx, Vy, nibble
+		x := opCode & 0x0F00 >> 8
+		y := opCode & 0x00F0 >> 4
+		n := opCode & 0x000F
+		c.PC = c.PC + 2
+		log.Printf("DRW V%d, V%d, %d", x, y, n)
+	} else if instruction == 0xF {
+		registry := uint8(opCode & 0x0F00 >> 8)
+		operation := opCode & 0xF0FF
+		if operation == 0xF007 {
+			log.Printf("Set V[%d] = delay timer value", registry)
+			c.V[registry] = c.delay_timer
+		} else if operation == 0xF015 {
+			log.Printf("Set delay timer value = V[%d]", registry)
+			c.delay_timer = c.V[registry]
+		} else {
+			log.Printf("F %x %x", opCode, operation)
+		}
+		c.PC = c.PC + 2
+	} else {
+		log.Fatalf("Unknown %x %x", opCode, opCode>>12)
+	}
+
+	if c.sound_timer > 0 {
+		if c.sound_timer == 1 {
+			fmt.Println("BEEP")
+		}
+		c.sound_timer--
+	}
+
+	if c.delay_timer > 0 {
+		c.delay_timer--
+	}
+	log.Printf("%x", c.PC)
 	return nil
 }
 
-func opCode(memAddress uint16, mem memory) uint16 {
-	opCode := uint16(mem[memAddress])<<8 | uint16(mem[memAddress+1])
-	log.Printf("%.16b %.8b %.8b", opCode, mem[memAddress], mem[memAddress+1])
-	return opCode
+func decodeOpCode(memAddress address, mem memory) instruction {
+	opCode := instruction(mem[uint16(memAddress)])<<8 | instruction(mem[uint16(memAddress+1)])
+	return instruction(opCode)
+}
+
+func (c *CPU) callSubroutine(opCode instruction) {
+	//Call subroutine at nnn
+	addr := address(opCode & 0x0FFF)
+	c.stack[c.sp] = c.PC
+	c.sp++
+	c.PC = addr
+
+	log.Printf("Call subroutine at %.3x %x", addr, c.PC)
+}
+
+func (c *CPU) loadToRegister(opCode instruction) {
+	//LD Vx, byte
+	registerId := uint8(opCode & 0x0F00 >> 8)
+	byte := byte(opCode & 0x00FF)
+	c.V[registerId] = byte
+	c.PC = c.PC + 2
+
+	log.Printf("LD V%d, %.2x", registerId, byte)
+}
+
+func (c *CPU) loadToI(opCode instruction) {
+	addr := address(opCode & 0x0FFF)
+	c.I = addr
+	c.PC = c.PC + 2
+
+	log.Printf("LD I, %.3x", addr)
+}
+
+func (c *CPU) jumpToAddress(opCode instruction) {
+	c.PC = address(opCode & 0x0FFF)
+	log.Printf("JP %.3x", c.PC)
+}
+
+func (c *CPU) returnFromSubroutine() {
+	c.sp--
+	c.PC = c.stack[c.sp]
+
+	log.Printf("RET %.3x %d", c.PC, c.sp)
 }
