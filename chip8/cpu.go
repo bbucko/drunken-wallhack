@@ -73,15 +73,13 @@ func (c *CPU) Step() error {
 	if instruction == 0x0 {
 		//TODO Refactor
 		if opCode == 0x00E0 {
-			c.PC = c.PC + 2
-
 			log.Println("%x CLS", c.PC)
+			c.PC = c.PC + 2
 		} else if opCode == 0x00EE {
 			c.returnFromSubroutine()
 		} else {
-			c.PC = c.PC + 2
-
 			log.Printf("%x SYS %x", c.PC, opCode&0xFF0F)
+			c.PC = c.PC + 2
 		}
 	} else if instruction == 0x1 {
 		//Jump to address nnn
@@ -97,8 +95,8 @@ func (c *CPU) Step() error {
 		if c.V[registry] == value {
 			c.PC = c.PC + 2
 		}
-		c.PC = c.PC + 2
 		log.Printf("%x SE V%d, %.2x", c.PC, registry, value)
+		c.PC = c.PC + 2
 	} else if instruction == 0x4 {
 		//SNE Vx, byte
 		//TODO Refactor
@@ -107,8 +105,8 @@ func (c *CPU) Step() error {
 		if c.V[registry] != value {
 			c.PC = c.PC + 2
 		}
-		c.PC = c.PC + 2
 		log.Printf("%x SNE V%d, %.2x", c.PC, registry, value)
+		c.PC = c.PC + 2
 	} else if instruction == 0x6 {
 		//LD Vx, byte
 		c.loadToRegister(opCode)
@@ -118,8 +116,8 @@ func (c *CPU) Step() error {
 		x := uint8(opCode & 0x0F00 >> 8)
 		value := byte(opCode & 0x00FF)
 		c.V[x] = c.V[x] + value
-		c.PC = c.PC + 2
 		log.Printf("%x ADD V%d, %.2x", c.PC, x, value)
+		c.PC = c.PC + 2
 	} else if instruction == 0x8 {
 		//TODO Refactor
 		if opCode&0xF00F == 0x8000 {
@@ -163,8 +161,8 @@ func (c *CPU) Step() error {
 		x := opCode & 0x0F00 >> 8
 		y := opCode & 0x00F0 >> 4
 		n := opCode & 0x000F
-		c.PC = c.PC + 2
 		log.Printf("%x DRW V%d, V%d, %d", c.PC, x, y, n)
+		c.PC = c.PC + 2
 	} else if instruction == 0xF {
 		//TODO Refactor
 		registry := uint8(opCode & 0x0F00 >> 8)
@@ -203,12 +201,13 @@ func decodeOpCode(memAddress address, mem memory) instruction {
 
 func (c *CPU) callSubroutine(opCode instruction) {
 	//Call subroutine at nnn
+	oldPC := c.PC
 	addr := address(opCode & 0x0FFF)
 	c.stack[c.sp] = c.PC
 	c.sp++
 	c.PC = addr
 
-	log.Printf("%x Call subroutine at %.3x %x", c.PC, addr, c.PC)
+	log.Printf("%x Call subroutine at %.3x %x", oldPC, addr, c.PC)
 }
 
 func (c *CPU) loadToRegister(opCode instruction) {
@@ -216,29 +215,31 @@ func (c *CPU) loadToRegister(opCode instruction) {
 	registerId := uint8(opCode & 0x0F00 >> 8)
 	byte := byte(opCode & 0x00FF)
 	c.V[registerId] = byte
-	c.PC = c.PC + 2
 
 	log.Printf("%x LD V%d, %.2x", c.PC, registerId, byte)
+	c.PC = c.PC + 2
 }
 
 func (c *CPU) loadToI(opCode instruction) {
 	addr := address(opCode & 0x0FFF)
 	c.I = addr
-	c.PC = c.PC + 2
 
 	log.Printf("%x LD I, %.3x", c.PC, addr)
+	c.PC = c.PC + 2
 }
 
 func (c *CPU) jumpToAddress(opCode instruction) {
+	oldPC := c.PC
 	c.PC = address(opCode & 0x0FFF)
-	log.Printf("%x JP %.3x", c.PC, c.PC)
+	log.Printf("%x JP %.3x", oldPC, c.PC)
 }
 
 func (c *CPU) returnFromSubroutine() {
+	oldPC := c.PC
 	c.sp--
 	c.PC = c.stack[c.sp]
 
-	log.Printf("%x RET %.3x %d", c.PC, c.PC, c.sp)
+	log.Printf("%x RET %.3x %d", oldPC, c.PC, c.sp)
 }
 
 func (c *CPU) addRegisters(opCode instruction) {
