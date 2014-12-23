@@ -71,6 +71,7 @@ func (c *CPU) Step() error {
 
 	instruction := (opCode & 0xF000) >> 12
 	if instruction == 0x0 {
+		//TODO Refactor
 		if opCode == 0x00E0 {
 			c.PC = c.PC + 2
 
@@ -90,6 +91,7 @@ func (c *CPU) Step() error {
 		c.callSubroutine(opCode)
 	} else if instruction == 0x3 {
 		//SE Vx, byte
+		//TODO Refactor
 		registry := int(opCode & 0x0F00 >> 8)
 		value := byte(opCode & 0x00FF)
 		if c.V[registry] == value {
@@ -99,6 +101,7 @@ func (c *CPU) Step() error {
 		log.Printf("%x SE V%d, %.2x", c.PC, registry, value)
 	} else if instruction == 0x4 {
 		//SNE Vx, byte
+		//TODO Refactor
 		registry := int(opCode & 0x0F00 >> 8)
 		value := byte(opCode & 0x00FF)
 		if c.V[registry] != value {
